@@ -1,0 +1,125 @@
+This is a Linux command line tool specific to TI's Davinci platforms, for
+flashing UBL (User Boot Loader), u-boot and u-boot Environment in the MMC/SD
+card. This MMC/SD card can be used for booting Davinci platforms that supports
+MMC/SD boot option.
+
+For simplicity, MMC is used in the following section to represent both MMC and
+SD cards.
+
+
+Building uflash utility
+=======================
+Set the TOOLSUBDIRS macro in the tools/Makefile to contain uflash directory
+TOOLSUBDIRS = uflash
+
+While building the u-boot binary, the uflash utility is also built and is placed
+under tools/uflash directory.
+
+
+Creating a Davinci bootable MMC card
+=====================================
+This document is based on the assumption that UBL is used the primary boot
+loader for booting u-boot. For more information on Davinci Boot modes, please
+refer the TMS320DM644x DMSoC ARM Subsystem Reference Guide (SPRUE14A).
+
+The embedded ROM boot loader (RBL) in Davinci expects the bootable code
+descriptor to be present in sectors 1 to 25 of the MMC card. Sector 0 is used
+for storing DOS partition information. Hence the UBL descriptor is stored
+from sectors 1 till 24. The descriptor is 512 bytes in size and is replicated
+in each of these sectors. This is followed by the u-boot descriptor,
+environment space, UBL binary and u-boot binary as depicted below:
+
+                    _______________________________________
+                   |                                       |
+                   |       Sector 0 - Partition Table      |
+                   |---------------------------------------|
+                   |        Sector 1 - UBL descriptor      |
+                   |---------------------------------------|
+                   |        Sector 2 - UBL descriptor      |
+                   |---------------------------------------|
+                   |                  ....                 |
+                   |---------------------------------------|
+                   |       Sector 24 - UBL descriptor      |
+                   |---------------------------------------|
+                   |      Sector 25 - u-boot descriptor    |
+                   |---------------------------------------|
+                   |      Sector 26 - u-boot descriptor    |
+                   |---------------------------------------|
+                   |                  ...                  |
+                   |---------------------------------------|
+                   |      Sector 51 - u-boot descriptor    |
+                   |---------------------------------------|
+                   | Sectors 52 to 83 - u-boot environment |
+                   |---------------------------------------|
+                   |      Sectors 84 till 116 - empty      |
+                   |---------------------------------------|
+                   |        Sector 117 - UBL binary        |
+                   |---------------------------------------|
+                   |                  ...                  |
+                   |---------------------------------------|
+                   |        Sector X = u-boot binary       |
+                   |  X = 117 + UBL binary size in blocks  |
+                   |---------------------------------------|
+                   |                  ...                  |
+                   |---------------------------------------|
+                   |       Sector Y = Application use      |
+                   |  Y = X + u-boot binary size in blocks |
+                   |---------------------------------------|
+                   |                  ...                  |
+                   |_______________________________________|
+
+a. The MMC card shall be re-partitioned and formated to create some room for
+   storing UBL and u-boot. Use fdisk utility (as super user) to delete the
+   existing partition and create a new one.
+    # fdisk /dev/mmcblk0 (device name might change if USB card reader is used)
+        - Delete the existing partitions with 'd' command.
+        - Create a new partition with 'n' command, followed by 'p' command
+        - Mark the first cylinder as 20.  Typical cylinder size is 32KBytes. So
+          starting the first cylinder at 20 provides us about 600Kbytes for
+          storing UBL and u-boot.  If the fdisk utility displays a different
+          cylinder size, make sure that you are leaving atleast 500K space
+          before the first cylinder.
+        - Leave the last cylinder to default value (or) any other value
+          depending on the partition size requirements.
+        - Save and exit with 'w' command
+
+b. Format the partition for EXT3 file system
+    # mkfs.ext3 /dev/mmcblk0p1
+
+c. Copy the root file system and kernel uImage onto the newly formated
+   partition. Pre-built images for Davinci DM355EVM platform are available at:
+   http://arago-project.org/files/releases/davinci-psp_3.x.0.0/images/dm355-evm/arago-demo-image-dm355-evm.tar.gz  (and)
+   http://arago-project.org/files/releases/davinci-psp_3.x.0.0/images/dm355-evm/uImage-dm355-evm.bin
+    # mount /dev/mmcblk0p1 /mnt
+    # cd /mnt
+    # tar xzf /path_to_binaries/arago-demo-image-dm355-evm.tar.gz
+    # cp /path_to_binaries/uImage-dm355-evm.bin boot/uImage
+    # cd /home
+    # umount /mnt
+
+d. Modify the config.txt file to set environment variables for u-boot.  These
+   environment variables will be used by default by the u-boot.
+
+e. Using the 'uflash' utility, place the UBL and u-uoot binaries on the MMC
+   card. Copy the u-boot.bin to tools/uflash directory
+    # ./uflash -d /dev/mmcblk0 -u UBL.bin -b u-boot.bin -vv
+        UBL Size 20991
+        u-boot Size 252087
+        First partition starts at 1216(622592)
+        Required Blocks 660, Available Blocks 1215
+        UBL Magic Number        : a1aced00
+        UBL Entry Point         : 00000100
+        UBL Number of Blocks    : 00000028
+        UBL Starting Block      : 00000075
+        UBL Load Address        : 00000000
+        Writing UBL Signature
+        Writing UBL
+        U-Boot Magic Number     : a1aced66
+        U-Boot Entry Point      : 81080000
+        U-Boot Number of Blocks : 000001ec
+        U-Boot Starting Block   : 000000a7
+        Load U-Boot Address     : 81080000
+        Writing U-Boot Signature
+        Writing U-Boot
+        Done...
+

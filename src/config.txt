@@ -1,0 +1,11 @@
+bootargs=console=ttyS0,115200n8 root=/dev/mmcblk0p1 rootwait rootfstype=ext3 rw
+bootcmd=ext2load mmc 0 0x80700000 boot/uImage; bootm 0x80700000
+bootdelay=1
+baudrate=115200
+bootfile="uImage"
+stdin=serial
+stdout=serial
+stderr=serial
+ethact=dm9000
+videostd=ntsc
+
